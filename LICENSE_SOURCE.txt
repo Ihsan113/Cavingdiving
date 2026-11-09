@@ -1,0 +1,1 @@
+CaveDive: Blue Abyss prototype code, original generated project. Use and modify freely for your game. Godot Engine itself is separately licensed under MIT.
