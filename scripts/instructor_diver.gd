@@ -80,7 +80,11 @@ func _build_character() -> void:
     add_child(light)
 
 func _process(delta: float) -> void:
-    if not _ready_for_update or player == null or route_points.size() < 5:
+    if not _ready_for_update or not is_inside_tree() or is_queued_for_deletion() or route_points.size() < 5:
+        return
+    # During a site change the previous diver is removed before the frame ends.
+    # Do not query a stale/detached Node3D global transform.
+    if not is_instance_valid(player) or player.is_queued_for_deletion() or not player.is_inside_tree():
         return
     _swim_clock += delta
     _left_fin.rotation.x = sin(_swim_clock*4.0)*0.20

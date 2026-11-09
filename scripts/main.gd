@@ -102,13 +102,17 @@ func _open_boat_world() -> void:
         remove_child(cave)
         cave.queue_free()
         cave = null
+    # Detach and stop the instructor before removing the diver it tracks.
+    if instructor != null:
+        instructor.set_process(false)
+        instructor.player = null
+        remove_child(instructor)
+        instructor.queue_free()
+        instructor = null
     if diver != null:
         remove_child(diver)
         diver.queue_free()
         diver = null
-    if instructor != null:
-        instructor.queue_free()
-        instructor = null
     if water_environment != null:
         remove_child(water_environment)
         water_environment.queue_free()
