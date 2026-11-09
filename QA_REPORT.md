@@ -1,24 +1,35 @@
-# CaveDive v0.4 — Quality check
+# CaveDive v0.5 — Quality Assurance Report
 
-- Based on source files from v0.3 (GitHub `Ihsan113/Cavingdiving`, latest branch head inspected: `31a970e8ec51e55f30ca92937240b681cbdcfeb9`). Workflow updated locally for v0.4; not yet pushed.
-- Static verification: **passed** — required project files, local references, ETC2/ASTC and GL Compatibility settings.
-- `project.godot` root points to `scenes/main.tscn` and `scripts/main.gd`.
-- XML/YAML syntax checks: **passed** for GitHub Actions YAML.
-- Script review: balanced delimiters and nonduplicated function names across GDScript scripts, no mixed indentation.
-- PNG: `icon.png`, `rock_normal.png`, `rock_limestone.png` verified.
-- OGG: all 6 audio files verified with ffprobe, including generated `boat_ocean.ogg` (12 seconds).
-- Route lengths calculated from `dive_sites.gd`: Umbral Cenote **508 m** one-way, max depth **31 m**. Black Karst **694 m** one-way, max depth **45 m**. Fictional paths; not georeferenced cave plans.
-- 3 survey markers set near 28%, 62%, 98% of interpolated routes; must return to entry.
-- All assets offline; renderer is Android GL Compatibility, ARM64-only export profile.
+## Basis
 
-## Not verified yet
+Source v0.4 was copied from the local archive. Its file list and file sizes were matched against the repository `Ihsan113/Cavingdiving` at commit `ec3250bf1355a1a326c35d3991130530af612ff4` (checked November 9, 2026). This v0.5 folder is a local review candidate, not a GitHub commit.
 
-- Full GDScript parsing in Godot 4.7.2 runtime (no Godot executable available in this environment).
-- Android APK export with v0.4 source and on-device control responsiveness/FPS.
-- Geological cave mesh visual quality and all touch-screen layouts on actual phones.
+## Executed locally
 
-Workflow includes a Godot headless startup smoke test to catch script errors before attempting APK export. **Do not label this version as a successful APK build until GitHub Actions returns success.**
+- `python3 tools/verify_project.py` — PASS (required assets/source, resource references, PNG/OGG signatures, Android ETC2 and scene).
+- `python3 tools/verify_cave_network.py` — PASS (fictional authored first map ~678m main route, six branches, three loop-backs, three blind ends, steep elevation changes, new NPC/HP logic).
+- All eight OGG assets — inspected/decoded using SoundFile.
+- Approximate 3D clearance analysis between new first-site side galleries and unrelated main route segments: minimum 6.8 m for side-gallery centerlines away from intended junctions; no new side-gallery centerline crossings found under 9 m. This check is geometric only, not gameplay collision validation.
+- ZIP full CRC verification (conducted after archive creation).
 
-## Source status
+## Configured for GitHub Actions (not executed locally)
 
-Local ZIP review package only — **no GitHub push/commit** has been performed for v0.4.
+- Godot 4.7.2 editor import and GDScript parse.
+- Headless title-scene smoke test.
+- `tools/smoke_dive.gd`: instantiates first and second cave worlds, instructor model, body HUD, tutorial, player rock contact damage, and seal patch logic.
+- Android SDK setup, export preset, debug keystore, export APK and APK zip verification.
+
+## Limitations
+
+**No Godot executable or Android runtime is available in the current local environment**, so this source ZIP is NOT a verified APK, nor has it been played on a physical Android device. We cannot yet claim that every corridor junction is traversable, physics collision behavior is flawless, HUD scales on all phones, or the FPS is stable. The new smoke test is intended to catch scene/script errors when this source is built in GitHub Actions; manual playtesting remains essential.
+
+## Suggested manual test pass on Android
+
+1. Enter Umbral Cenote; tutorial Maya opens before control begins.
+2. Observe Maya in swimming pose with her own torch; follow the yellow guideline.
+3. At the first wide intersection, take a branch, return to the main line, then try a dead end.
+4. Ascend the steep side chimney; test up/down controls on mobile.
+5. Touch one visible rock spike; confirm body part HP and suit meter decrease, radio/impact sounds, then `SEAL SUIT` restores suit only.
+6. Record one beacon, return to the entrance early, and confirm safe partial extraction.
+7. Restart, record all three beacons, and return to the entrance for full completion.
+8. Play Black Karst System briefly to ensure old mission is not broken.

@@ -28,6 +28,10 @@ func _draw() -> void:
             _stroke([Vector2(-18,-13),Vector2(-6,-17),Vector2(7,-11),Vector2(18,-15),Vector2(18,13),Vector2(6,17),Vector2(-7,11),Vector2(-18,15),Vector2(-18,-13)],s,c)
             _stroke([Vector2(-6,-17),Vector2(-7,11)],s,c)
             _stroke([Vector2(7,-11),Vector2(6,17)],s,c)
+        "patch":
+            _stroke([Vector2(-10,-18),Vector2(10,-18),Vector2(10,-8),Vector2(19,-8),Vector2(19,10),Vector2(10,10),Vector2(10,18),Vector2(-10,18),Vector2(-10,10),Vector2(-19,10),Vector2(-19,-8),Vector2(-10,-8),Vector2(-10,-18)],s,c)
+            _stroke([Vector2(-9,0),Vector2(9,0)],s,c)
+            _stroke([Vector2(0,-9),Vector2(0,9)],s,c)
         "pause":
             draw_rect(Rect2(c+Vector2(-10,-13)*s,Vector2(6,26)*s),line_color)
             draw_rect(Rect2(c+Vector2(4,-13)*s,Vector2(6,26)*s),line_color)

@@ -53,12 +53,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/verify_project.py
+          python3 tools/verify_cave_network.py
           for file in \
               scripts/boat_lobby.gd scripts/dive_sites.gd scripts/hud_glyph.gd \
+              scripts/instructor_diver.gd scripts/body_hud.gd \
               assets/rock_limestone.png assets/rock_normal.png \
               assets/audio/boat_ocean.ogg assets/audio/underwater_ambience.ogg \
               assets/audio/regulator_breath.ogg assets/audio/bubbles_release.ogg \
-              assets/audio/fin_swoosh.ogg assets/audio/survey_ping.ogg; do
+              assets/audio/fin_swoosh.ogg assets/audio/survey_ping.ogg \
+              assets/audio/rock_contact.ogg assets/audio/radio_chirp.ogg; do
             test -s "$file" || { echo "Missing: $file"; exit 1; }
           done
 
@@ -87,6 +90,17 @@ jobs:
           godot --headless --path . --quit-after 30 2>&1 | tee /tmp/cavedive-smoke.log
           if grep -Ei 'SCRIPT ERROR|Parse Error|Invalid call|Invalid access' /tmp/cavedive-smoke.log; then
             echo 'Runtime script error during title scene initialization.'
+            exit 1
+          fi
+
+      - name: Smoke test both cave networks, instructor and injury gameplay
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script tools/smoke_dive.gd 2>&1 | tee /tmp/cavedive-network-smoke.log
+          grep -F "SMOKE DIVE PASSED" /tmp/cavedive-network-smoke.log
+          if grep -Ei 'SCRIPT ERROR|Parse Error|Invalid call|Invalid access|ERROR:' /tmp/cavedive-network-smoke.log; then
+            echo 'Runtime error in expedition gameplay smoke test.'
             exit 1
           fi
 

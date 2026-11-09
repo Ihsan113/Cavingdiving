@@ -1,15 +1,16 @@
-# CaveDive changelog
+# Changelog
 
-## v0.4 — Expedition Update (review package)
-- Added complete title screen, selectable dive location lobby and expedition briefing aboard a 3D research boat.
-- Added fictional Umbral Cenote / Black Karst routes with separate lengths, depths and multiple restrictions.
-- Rebuilt telemetry overlay with crisp, programmatic vector icon controls.
-- Added local sonar / full survey schematic and mission statistics.
-- Added original ocean-surface ambient OGG, with dive-to-boat audio transitions.
-- Tuned gas usage for long round-trip exploration; remains a game simulation, not dive-planning software.
-- Added GitHub Actions static media checks and headless startup smoke test.
-- Kept compatibility with Android arm64 Godot 4.7.2 GL Compatibility and Android SDK 35.
+## v0.5 — Labyrinth & Instructor Update
 
-## v0.3 — Geology and underwater audio
-- Limestone textures, normal map, multi-mesh formations and original underwater SFX.
-- Existing beacon surveying, torch, gas, depth, basic dive telemetry.
+- Umbral Cenote: 678 m main path, 6 physical side passages, 3 loops, 3 blind ends, steep vertical sections, wide junctions, and shallow chimney.
+- Side galleries built as cave tunnel meshes with collision and junction shells with openings; Black Karst also receives three passable side galleries.
+- Fixed line guidance vs unmarked side passages; discoverable side routes; full-screen map vertical depth profile.
+- Jagged limestone hazards with contact detection and damage cooldown.
+- New four-part body HP UI, suit leaks, two seal patches, and limb-specific gameplay penalties.
+- Instructor Maya: lightweight swimming 3D companion, follow-along guided main route, text/radio warnings and four-part tutorial.
+- Added original offline rock impact + radio signal OGG.
+- GitHub Actions adds geometry preflight plus runtime smoke-test of maps, injury, patching, NPC and tutorial before APK export.
+
+## v0.4 — Expedition foundations
+
+- Ship lobby, two dive sites, game UI and mobile HUD, existing expedition audio.

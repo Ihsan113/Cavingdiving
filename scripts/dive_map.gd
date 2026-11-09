@@ -4,6 +4,8 @@ class_name DiveMap
 # Offline cartographic navigation display. Shows a fictional surveyed centerline.
 # Small display uses a moving local window; full display shows the entire route.
 var route: PackedVector3Array = PackedVector3Array()
+var branches: Array[PackedVector3Array] = []
+var discovered_branches: Array[bool] = []
 var diver_position: Vector3 = Vector3.ZERO
 var diver_yaw: float = 0.0
 var target_position: Vector3 = Vector3.ZERO
@@ -22,7 +24,7 @@ func _draw() -> void:
     draw_rect(r,Color(0.027,0.083,0.104,0.97),true)
     draw_rect(Rect2(Vector2(1,1),size-Vector2(2,2)),Color(0.20,0.43,0.45,0.6),false,1.5)
     var top_margin := 46.0 if large else 25.0
-    var bottom_margin := 37.0 if large else 13.0
+    var bottom_margin := 110.0 if large else 13.0
     var inner := Rect2(Vector2(13,top_margin),size - Vector2(26,top_margin+bottom_margin))
     draw_rect(inner,Color(0.012,0.055,0.078,0.95),true)
     for i in range(1,9):
@@ -44,6 +46,12 @@ func _draw() -> void:
         max_x = maxf(max_x,p.x)
         min_z = minf(min_z,p.z)
         max_z = maxf(max_z,p.z)
+    for branch in branches:
+        for p in branch:
+            min_x = minf(min_x,p.x)
+            max_x = maxf(max_x,p.x)
+            min_z = minf(min_z,p.z)
+            max_z = maxf(max_z,p.z)
     var scale := 0.0
     var origin := Vector2.ZERO
     if large:
@@ -64,6 +72,28 @@ func _draw() -> void:
             draw_line(previous,point,Color(0.31,0.54,0.54,0.48),9 if large else 7,true)
             draw_line(previous,point,Color(0.47,0.83,0.82,0.91),2.3 if large else 1.8,true)
         previous = point
+    # Off-line galleries are drawn differently from the fixed yellow guideline.
+    # The local map reveals a gallery only after its entrance is discovered.
+    for branch_index in branches.size():
+        var known := not show_player or (branch_index < discovered_branches.size() and discovered_branches[branch_index])
+        if not known:
+            continue
+        var branch := branches[branch_index]
+        var last_point := Vector2.ZERO
+        for segment_index in branch.size():
+            var bp := branch[segment_index]
+            var point2 := origin+Vector2(bp.x*sideways,bp.z)*scale
+            if segment_index>0:
+                draw_line(last_point,point2,Color(0.74,0.48,0.27,0.28),12 if large else 6,true)
+                var vector := point2-last_point
+                var length := vector.length()
+                if length>0.1:
+                    var tangent := vector/length
+                    for pixel in range(0,int(length),13 if large else 10):
+                        var p0 := last_point+tangent*float(pixel)
+                        var p1 := last_point+tangent*minf(length,float(pixel+5))
+                        draw_line(p0,p1,Color(1,0.68,0.32,0.81),2 if large else 1.4,true)
+            last_point = point2
     for i in checkpoints.size():
         var p := origin+Vector2(checkpoints[i].x*sideways,checkpoints[i].z)*scale
         draw_circle(p,5.2 if large else 3.7,Color(0.40,0.98,0.75) if i < recorded_sites else Color(1.0,0.69,0.31))
@@ -82,6 +112,44 @@ func _draw() -> void:
     draw_rect(Rect2(Vector2(0,size.y-bottom_margin),Vector2(size.x,bottom_margin)),Color(0.027,0.083,0.104,0.97),true)
     draw_string(font,Vector2(15,26 if large else 17),"SURVEY / NAVIGATION" if large else "SONAR  //  LOCAL",HORIZONTAL_ALIGNMENT_LEFT,-1,17 if large else 12,Color(0.60,0.90,0.90))
     if large:
-        draw_string(font,Vector2(15,size.y-14),"CYAN: GUIDE   AMBER: TARGET   WHITE: DIVER  /  X ENHANCED",HORIZONTAL_ALIGNMENT_LEFT,-1,12,Color(0.63,0.78,0.79))
+        _draw_vertical_profile(font,Rect2(Vector2(15,size.y-91),Vector2(size.x-30,76)))
+        draw_string(font,Vector2(15,size.y-14),"CYAN: MAIN LINE  /  ORANGE DASH: UNMARKED SIDE GALLERY  /  BELOW: DEPTH",HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color(0.63,0.78,0.79))
     draw_string(font,Vector2(size.x-40,26 if large else 17),"N",HORIZONTAL_ALIGNMENT_LEFT,-1,16 if large else 12,Color(0.88,0.93,0.82))
     draw_line(Vector2(size.x-30,34 if large else 23),Vector2(size.x-30,40 if large else 27),Color(0.88,0.93,0.82),1.5)
+
+func _draw_vertical_profile(font: Font, plot: Rect2) -> void:
+    if route.size()<2:
+        return
+    draw_rect(plot,Color(0.015,0.075,0.091,1.0),true)
+    draw_rect(plot,Color(0.22,0.46,0.49,0.67),false,1.0)
+    var total := 0.0
+    for idx in range(1,route.size()):
+        total += route[idx].distance_to(route[idx-1])
+    var maximum := 1.0
+    for p in route:
+        maximum = maxf(maximum,-p.y)
+    var progress := 0.0
+    var prev := Vector2(plot.position.x,plot.position.y+(-route[0].y)/maximum*plot.size.y)
+    var point := prev
+    for i in range(1,route.size()):
+        progress += route[i].distance_to(route[i-1])
+        point = Vector2(plot.position.x+plot.size.x*progress/maxf(total,1.0),plot.position.y+(-route[i].y)/maximum*plot.size.y)
+        draw_line(prev,point,Color(0.56,0.92,0.88),2.0,true)
+        if absf(route[i].y-route[i-1].y)>10.0:
+            draw_circle(point,3.2,Color(1.0,0.76,0.37))
+        prev=point
+    draw_string(font,plot.position+Vector2(7,14),"VERTICAL PROFILE  /  0 to %dm" % int(ceilf(maximum)),HORIZONTAL_ALIGNMENT_LEFT,-1,11,Color(0.88,0.94,0.94))
+    if show_player:
+        var closest := 0
+        var best := INF
+        for i in route.size():
+            var d := route[i].distance_squared_to(diver_position)
+            if d < best:
+                best = d
+                closest = i
+        var walked := 0.0
+        for j in range(1,closest+1):
+            walked += route[j].distance_to(route[j-1])
+        var x := plot.position.x+walked/maxf(1.0,total)*plot.size.x
+        var y := plot.position.y+(-diver_position.y)/maximum*plot.size.y
+        draw_circle(Vector2(x,y),4.0,Color.WHITE)

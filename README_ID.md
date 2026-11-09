@@ -1,60 +1,63 @@
-# CaveDive: Blue Abyss — Expedition Update v0.4
+# CaveDive: Blue Abyss — Expedition Update v0.5
 
-**Project Godot 4.7.2 / Android only / landscape / renderer GL Compatibility.**
+**Android-only (landscape), Godot 4.7.2, GDScript, offline, ARM64 debug export.**
 
-> Status: source prototipe v0.4 siap di-review. ZIP belum dipush ke GitHub. Build APK v0.4 **belum** diuji pada runner Godot. Rute terinspirasi karakter gua batu kapur/karst di dunia nyata, namun **sepenuhnya fiktif** dan bukan peta gua nyata, bukan perangkat navigasi atau perencanaan penyelaman.
+## Apa yang berubah dari v0.4?
 
-## Apa yang berubah sejak v0.3
+### Peta 01 — UMBRAL CENOTE (pembaruan utama)
 
-1. **Tidak lagi langsung mulai di gua.** Sekarang title screen berlatarkan dek kapal ekspedisi 3D, kemudian pilih lokasi, briefing, dan animasi transisi turun ke air.
-2. **Dua lokasi ekspedisi baru:** Umbral Cenote (fiksi dengan suasana batu kapur bergaya Yucatan) dan Black Karst System (fiksi bergaya karst tropis). Rute panjangnya sekitar 500–700 meter per arah sesuai data jalur di source, dengan 3 beacon, beberapa ruang luas dan area penyempitan. Setiap lokasi punya profil kedalaman, kelokan, dan kesulitan berbeda.
-3. **HUD baru:** panel dive computer, tekanan gas, kedalaman, waktu, kompas, status misi, peta sonar lokal, peta survei penuh, peringatan, dan tombol jeda.
-4. **Ikon asli vektor dalam Godot:** panah naik, panah turun, lampu senter, peta, pause, play, kedalaman, tabung gas, kompas, waktu, audio, dan tombol kembali. Tidak bergantung pada font emoji.
-5. **Audio:** ambience permukaan laut saat di kapal; perpindahan ke suara napas regulator, gelembung, air bawah laut, sirip, dan bunyi checkpoint ketika menyelam. Semua audio offline OGG.
-6. **Kontrol mobile:** joystick kiri, drag kanan untuk melihat, ikon naik/turun dan lampu di kanan. Tetap mendukung keyboard/mouse saat uji di PC.
-7. **Performa:** guideline disatukan menjadi MultiMesh, tetap memakai material ringan dan GL Compatibility. Ikon digambar vektor. Map redrawn sekitar 8 kali/detik.
-8. **Workflow GitHub:** memasukkan pemeriksaan file penting, validasi GDScript, dan smoke test scene awal sebelum ekspor APK ARM64.
+- Rute utama 3D sekitar **678 meter (satu arah)** dengan perubahan kedalaman sampai **47 m (skala gameplay)**.
+- **6 lorong samping yang benar-benar dibuat sebagai mesh 3D dengan collision** — bukan hanya garis dalam peta.
+- **3 rute alternatif yang menyambung kembali** ke jalur utama serta **3 jalan buntu** untuk eksplorasi dan risiko tersesat.
+- **Shaft naik hampir vertikal**, penurunan tajam, ruang junction besar yang terbuka, ruang lebar dan tiga restriction sempit.
+- Geometri junction dirancang memiliki portal/holes agar perpindahan antarlorong bisa dilakukan.
+- Guideline kuning hanya berada di jalur utama. Galeri samping baru diperlihatkan di peta setelah ditemukan. Peta penuh juga memiliki grafik profil kedalaman.
+- **Batu tajam** berupa mesh runcing dan `Area3D` yang mendeteksi pemain dan menyebabkan cedera.
 
-## Alur game
+### Peta 02 — BLACK KARST SYSTEM
 
-`Title → Deck kapal → Pilih Umbral Cenote / Black Karst → Briefing → Descent → Dive POV → 3 beacon → Kembali ke pintu gua → Hasil → Kembali ke kapal`
+Rute utama tetap dari v0.4. Tiga galeri sampingnya kini juga dibentuk secara fisik dan disambungkan melalui junction terbuka (meskipun fokus desain v0.5 berada pada map 01).
 
-## Cara build di GitHub Actions
+### Penyakit/cedera = mekanik gameplay, bukan model medis
 
-1. Ekstrak ZIP, pastikan `project.godot` berada di direktori root repository.
-2. Upload **seluruh isi** proyek, termasuk `.github/workflows/android.yml` dan semua aset `assets/`.
-3. Buka **GitHub → Actions → CaveDive Android APK → Run workflow**.
-4. Setelah berhasil, unduh artifact `CaveDive-Android-debug-APK`, ekstrak, dan instal APK. Debug APK hanya untuk pengujian, belum siap publikasi Play Store.
-5. Jika ada error, salin pesan terakhir dari `Validate scripts`, `Smoke test`, atau `Export Android debug APK`.
+- HP dipisahkan menjadi **kepala, torso, lengan, dan kaki**; terlihat pada siluet dan bar status.
+- Benturan batu menurunkan HP bagian tubuh tertentu dan integritas suit. Kontak berulang memiliki cooldown supaya satu batu tidak menghabiskan HP dalam satu frame.
+- Suit rusak mengakibatkan konsumsi gas lebih cepat; dua **SEAL SUIT** patch bisa memperbaiki kebocoran, tetapi **tidak menyembuhkan cedera**.
+- Cedera kaki memperlambat renang, torso menaikkan konsumsi gas, tangan melemahkan penerangan, dan kepala membatasi visibilitas.
+- Misi tetap dapat diakhiri dengan kembali ke pintu masuk setelah memperoleh sebagian checkpoint: *safe partial extraction*.
 
-Proyek ini tidak memerlukan akun, API, server, atau koneksi internet selama bermain.
+### Instruktur NPC
+
+- **Instructor Maya** hadir sebagai model penyelam 3D dengan perlengkapan, sirip animasi, dan lampu cadangan.
+- Maya berenang mengikuti rute panduan utama, bukan menyelusup menembus dinding, dan menunggu ketika pemain mengambil cabang yang jauh.
+- Sebelum bergerak ada **tutorial 4 langkah** dengan tombol NEXT, SKIP, dan DIVE NOW.
+- Instruksi situasional berupa **subtitle radio** dan bunyi komunikasi orisinal: saat menemukan junction, menyimpang dari jalur, terkena batu, atau gas rendah. **Belum ada voice acting narasi NPC**.
+
+### Audio
+
+Mempertahankan SFX offline v0.4 (kapal, ambience gua, napas, gelembung, sirip, beacon) dan menambah suara orisinal **gesekan/benturan batu** serta **chirp radio instruktur**.
+
+## Cara build melalui GitHub Actions
+
+1. Upload SELURUH isi folder proyek (termasuk `.github/workflows/android.yml`, `scripts/`, `tools/`, dan `assets/`) ke repository yang kamu pilih.
+2. GitHub → **Actions → CaveDive Android APK → Run workflow**, atau push ke `main` agar workflow berjalan otomatis.
+3. Workflow menjalankan: preflight file/aset, validasi geometri authored cave, import Godot, *title smoke test*, **dua-map gameplay smoke test** untuk NPC + cedera, lalu Android debug export.
+4. Bila hijau, download artifact `CaveDive-Android-debug-APK`, ekstrak lalu instal file APK di ponsel ARM64.
+5. Bila merah, kirim URL job error. **Belum ada APK v0.5 terverifikasi dari runner.**
 
 ## Kontrol
 
-- **Android**: joystick kiri untuk berenang; geser di area kanan untuk memandang; tombol ↑ untuk naik, ↓ untuk turun, ikon senter untuk lampu, ikon peta, ikon jeda.
-- **PC untuk pengujian**: WASD, mouse, Space naik, Ctrl turun, Shift berenang cepat, F lampu, M peta, Esc/P jeda.
-- Di menu jeda, kontrol **AUDIO** mematikan/menghidupkan semua SFX.
+- **Joystick kiri** = berenang maju/mundur/samping.
+- **Drag layar kanan** = kamera POV.
+- **Panah atas / bawah** = naik/turun.
+- **Senter** = nyalakan/matikan lampu.
+- **Map** = peta penuh + profil vertikal.
+- **SEAL SUIT** = memperbaiki kebocoran bila terluka, stok dua kali.
+- **Pause** = lanjut atau kembali ke kapal.
 
-## Catatan dan batasan prototipe
+## Catatan teknis dan keselamatan
 
-- Dua lokasi bukan rekonstruksi 1:1 gua asli. Panjang jalur di HUD hanya panjang garis pusat yang dihitung dari titik rute.
-- Tidak ada sistem dekompresi, nitrox, redundansi tabung, atau simulasi fisika gas yang aman untuk digunakan pada penyelaman sungguhan. Pemakaian gas sengaja dipercepat/diperlambat untuk gameplay.
-- Perahu dan batu adalah geometri 3D low-poly/prosedural, bukan aset photogrammetry. Pembenahan kualitas artistik bisa menjadi tahap lanjut.
-- Rute samping masih sebatas data desain (`dive_sites.gd`) dan belum merupakan galeri yang bisa dijelajahi; dua jalur utama dan checkpoint aktif.
-- Batas performa FPS di berbagai model Android belum diukur. Coba APK debug di perangkat nyata setelah workflow berhasil.
-- Paket ini **tidak** memodifikasi atau mengunggah apapun ke `Ihsan113/Cavingdiving` tanpa perintah push.
-
-## Struktur file
-
-- `scenes/main.tscn` — scene induk.
-- `scripts/main.gd` — state machine menu, kapal, pilihan map, briefing, dive, HUD, pause dan hasil.
-- `scripts/boat_lobby.gd` — lingkungan kapal/perahu riset dan lautan.
-- `scripts/dive_sites.gd` — data dua rute dan metadata lokasi.
-- `scripts/cave_builder.gd` — gua prosedural batu kapur dengan collision dan guideline.
-- `scripts/dive_map.gd` — diagram peta navigasi.
-- `scripts/hud_glyph.gd` — gambar ikon vektor.
-- `scripts/diver.gd` — gerak penyelam POV.
-- `scripts/dive_audio.gd` — sistem SFX bawah air.
-- `assets/audio/` — keenam audio OGG termasuk `boat_ocean.ogg`.
-- `.github/workflows/android.yml` — ekspor APK debug melalui Actions.
-- `tools/verify_project.py` — pemeriksaan statis berkas dan audio sebelum build.
+- **Bukan simulator prosedur penyelaman sungguhan.** Tekanan tabung, HP, jarak, narasi instruktur, gas consumption, dan risikonya memakai aturan gameplay buatan.
+- Map adalah **fiksi orisinal yang terinspirasi bentang karst**, bukan rekonstruksi gua nyata atau peta navigasi.
+- Visual gua dibuat dari mesh prosedural dan tekstur murah untuk GPU Android. Performa harus diuji pada perangkat fisik.
+- Rilis ini **source review ZIP, belum di-push ke GitHub oleh asisten**. Pemilik repository dapat memeriksa diff dahulu.

@@ -9,11 +9,14 @@ NEEDED = [
     'scripts/main.gd','scripts/boat_lobby.gd','scripts/dive_sites.gd',
     'scripts/cave_builder.gd','scripts/diver.gd','scripts/dive_map.gd',
     'scripts/dive_audio.gd','scripts/hud_glyph.gd',
+    'scripts/instructor_diver.gd','scripts/body_hud.gd',
     'scripts/touch_joystick.gd','scripts/touch_look.gd',
     'assets/icon.png','assets/rock_limestone.png','assets/rock_normal.png',
     'assets/audio/boat_ocean.ogg','assets/audio/underwater_ambience.ogg',
     'assets/audio/regulator_breath.ogg','assets/audio/bubbles_release.ogg',
     'assets/audio/fin_swoosh.ogg','assets/audio/survey_ping.ogg',
+    'assets/audio/rock_contact.ogg','assets/audio/radio_chirp.ogg',
+    'tools/verify_cave_network.py','tools/smoke_dive.gd',
     '.github/workflows/android.yml',
 ]
 for name in NEEDED:

@@ -13,6 +13,8 @@ var breath: AudioStreamPlayer
 var bubbles: AudioStreamPlayer
 var fins: AudioStreamPlayer
 var ping: AudioStreamPlayer
+var impact: AudioStreamPlayer
+var radio: AudioStreamPlayer
 
 func _ready() -> void:
     ambience = _make_sound("CaveWaterDrone", "underwater_ambience.ogg", -20.0, true)
@@ -20,6 +22,8 @@ func _ready() -> void:
     bubbles = _make_sound("ExhaledAirBubbles", "bubbles_release.ogg", -14.0, false)
     fins = _make_sound("FinSwimSound", "fin_swoosh.ogg", -23.0, false)
     ping = _make_sound("SurveyBeaconSignal", "survey_ping.ogg", -13.0, false)
+    impact = _make_sound("SharpRockImpact", "rock_contact.ogg", -7.0, false)
+    radio = _make_sound("InstructorCommsChirp", "radio_chirp.ogg", -15.0, false)
     set_process(true)
 
 func _make_sound(node_name: String, file: String, db: float, looping: bool) -> AudioStreamPlayer:
@@ -43,11 +47,11 @@ func begin() -> void:
 
 func finish() -> void:
     active = false
-    for player in [ambience, breath, bubbles, fins, ping]:
+    for player in [ambience, breath, bubbles, fins, ping, impact, radio]:
         player.stop()
 
 func set_paused(paused: bool) -> void:
-    for player in [ambience, breath, bubbles, fins, ping]:
+    for player in [ambience, breath, bubbles, fins, ping, impact, radio]:
         player.stream_paused = paused
 
 func set_enabled(value: bool) -> void:
@@ -55,11 +59,19 @@ func set_enabled(value: bool) -> void:
         return
     enabled = value
     if not enabled:
-        for player in [ambience, breath, bubbles, fins, ping]:
+        for player in [ambience, breath, bubbles, fins, ping, impact, radio]:
             player.stop()
     elif active:
         ambience.play()
         breath.play()
+
+func rock_contact() -> void:
+    if active and enabled:
+        impact.play()
+
+func radio_message() -> void:
+    if active and enabled:
+        radio.play()
 
 func survey_complete() -> void:
     if active and enabled:

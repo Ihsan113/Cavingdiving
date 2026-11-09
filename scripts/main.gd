@@ -9,6 +9,8 @@ const MapScript = preload("res://scripts/dive_map.gd")
 const StickScript = preload("res://scripts/touch_joystick.gd")
 const LookScript = preload("res://scripts/touch_look.gd")
 const GlyphScript = preload("res://scripts/hud_glyph.gd")
+const BodyScript = preload("res://scripts/body_hud.gd")
+const InstructorScript = preload("res://scripts/instructor_diver.gd")
 
 const GAS_START: float = 300.0
 const TURN_WARNING: float = 115.0
@@ -25,6 +27,7 @@ var site_index: int = 0
 var boat: ExpeditionBoat
 var cave: ProceduralCave
 var diver: CaveDiver
+var instructor: DiveInstructor
 var audio: CaveDiveAudio
 var water_environment: WorldEnvironment
 var boat_sound: AudioStreamPlayer
@@ -43,6 +46,17 @@ var descend_held: bool = false
 var map_open: bool = false
 var silt_clock: float = 0.0
 var restriction_near: bool = false
+var body_health: Dictionary = {"HEAD":100.0,"TORSO":100.0,"ARMS":100.0,"LEGS":100.0}
+var suit_integrity: float = 100.0
+var patch_count: int = 2
+var rock_hits: int = 0
+var low_gas_notified: bool = false
+var hit_cooldown: float = 0.0
+var route_warning_clock: float = 0.0
+var comm_clock: float = 0.0
+var tutorial_visible: bool = false
+var tutorial_step: int = 0
+var found_branches: Array[bool] = []
 var event_clock: float = 0.0
 var hud_clock: float = 0.0
 
@@ -63,6 +77,10 @@ var lookpad: DiveLookPad
 var torch_button: Button
 var audio_button: Button
 var pause_overlay: Control
+var body_display: DiveBodyHUD
+var instructor_label: Label
+var training_overlay: Control
+var impact_shade: ColorRect
 
 func _ready() -> void:
     Engine.max_fps = 60
@@ -88,6 +106,9 @@ func _open_boat_world() -> void:
         remove_child(diver)
         diver.queue_free()
         diver = null
+    if instructor != null:
+        instructor.queue_free()
+        instructor = null
     if water_environment != null:
         remove_child(water_environment)
         water_environment.queue_free()
@@ -138,11 +159,17 @@ func _create_underwater_world() -> void:
     cave.name = Sites.title(site_index).replace(" ", "") + "Cavern"
     cave.site_index = site_index
     add_child(cave)
+    cave.sharp_rock_contact.connect(_on_sharp_rock_contact)
     diver = DiverScript.new()
     diver.name = "ExpeditionDiverPOV"
     diver.position = cave.route[0] + Vector3(0,0,1.4)
     diver.swim_speed = 5.2
     add_child(diver)
+    instructor = InstructorScript.new()
+    instructor.route_points = cave.sample_path
+    instructor.player = diver
+    instructor.position = cave.sample_path[5] + Vector3(0,0.4,0)
+    add_child(instructor)
     audio = AudioScript.new()
     audio.name = "UnderwaterSoundscape"
     add_child(audio)
@@ -158,6 +185,18 @@ func _create_underwater_world() -> void:
     map_open = false
     silt_clock = 0
     restriction_near = false
+    body_health = {"HEAD":100.0,"TORSO":100.0,"ARMS":100.0,"LEGS":100.0}
+    suit_integrity = 100.0
+    patch_count = 2
+    rock_hits = 0
+    low_gas_notified = false
+    hit_cooldown = 0.0
+    route_warning_clock = 0.0
+    comm_clock = 0.0
+    tutorial_visible = false
+    found_branches.clear()
+    for _i in cave.branches.size():
+        found_branches.append(false)
     event_clock = 0
 
 func _clear_ui() -> void:
@@ -166,6 +205,10 @@ func _clear_ui() -> void:
     gas_label = null
     pause_overlay = null
     map_overlay = null
+    body_display = null
+    instructor_label = null
+    training_overlay = null
+    impact_shade = null
 
 func _panel(parent: Node, pos: Vector2, extent: Vector2, opaque: float = 0.92, accent: bool = false) -> Panel:
     var panel := Panel.new()
@@ -252,7 +295,7 @@ func _show_title() -> void:
     _label(card,"A descent into the unseen. Two extended underwater cave systems, one way back to daylight.",Vector2(28,281),Vector2(card.size.x-52,70),18,WHITE)
     _button(card,"START EXPEDITION","play",Vector2(26,card.size.y-119),Vector2(card.size.x-52,55),_show_lobby,true)
     _button(ui,"AUDIO %s" % ("ON" if sound_enabled else "OFF"),"volume",Vector2(screen.x-216,23),Vector2(183,45),_toggle_menu_audio)
-    _label(ui,"ANDROID EDITION  /  OFFLINE  /  VERSION 0.4",Vector2(screen.x-380,screen.y-34),Vector2(370,24),13,MUTED)
+    _label(ui,"ANDROID EDITION  /  OFFLINE  /  VERSION 0.5",Vector2(screen.x-380,screen.y-34),Vector2(370,24),13,MUTED)
 
 func _show_lobby() -> void:
     flow = Flow.LOBBY
@@ -335,7 +378,7 @@ func _show_briefing() -> void:
     _label(info,"DEPTH  %d m" % Sites.depth_m(site_index),Vector2(width*0.53,15),Vector2(240,30),19,WHITE)
     _label(info,"CHECKPOINTS  03",Vector2(18,62),Vector2(270,27),17,WHITE)
     _label(info,"GAS  300 bar",Vector2(width*0.53,62),Vector2(250,27),17,WHITE)
-    _label(p,"Follow the yellow guideline, record all three sites, then return to the entrance. This is a game; gauges are not for real dive planning.",Vector2(24,height-173),Vector2(width-48,61),15,MUTED)
+    _label(p,"INSTRUCTOR MAYA: Stay on the yellow line; unmarked passages may be dead ends. Watch the body monitor and seal any torn suit. Game-only gauges, not real dive-planning data.",Vector2(24,height-173),Vector2(width-48,75),15,MUTED)
     _button(p,"AUDIO","volume",Vector2(width-158,19),Vector2(132,44),_toggle_menu_audio)
     _button(p,"BACK","back",Vector2(23,height-75),Vector2(188,51),_show_lobby)
     _button(p,"BEGIN DESCENT","down",Vector2(width-275,height-75),Vector2(251,51),_begin_dive,true)
@@ -344,10 +387,10 @@ func _begin_dive() -> void:
     _create_underwater_world()
     flow = Flow.DIVING
     _build_dive_hud()
-    diver.can_move = true
+    diver.can_move = false
+    tutorial_visible = true
+    if instructor != null: instructor.set_process(false)
     audio.begin()
-    if not mobile:
-        Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
     var black := ColorRect.new()
     black.color = Color(0.0,0.015,0.028,1.0)
     black.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -357,12 +400,13 @@ func _begin_dive() -> void:
     var tween := create_tween()
     tween.tween_property(black,"modulate:a",0.0,1.9)
     tween.tween_callback(func(): black.queue_free())
+    tween.tween_callback(func(): _show_training(0))
     _update_hud()
 
 func _build_dive_hud() -> void:
     _clear_ui()
     var telemetry := _panel(ui,Vector2(14,14),Vector2(318,166),0.86,true)
-    _label(telemetry,"DIVE COMPUTER     /     DC-04",Vector2(16,11),Vector2(290,26),14,CYAN)
+    _label(telemetry,"DIVE COMPUTER     /     DC-05",Vector2(16,11),Vector2(290,26),14,CYAN)
     gas_label = _label(telemetry,"300 BAR",Vector2(48,37),Vector2(232,42),31,WHITE,true)
     _add_icon(telemetry,"tank",Vector2(15,42),Vector2(31,31))
     gas_meter = ProgressBar.new()
@@ -383,6 +427,13 @@ func _build_dive_hud() -> void:
     _add_icon(telemetry,"clock",Vector2(163,108),Vector2(28,28))
     time_label = _label(telemetry,"00:00",Vector2(191,107),Vector2(114,30),21,WHITE)
     heading_label = _label(telemetry,"HDG 000°",Vector2(19,139),Vector2(275,23),15,MUTED)
+    var status_frame := _panel(ui,Vector2(14,189),Vector2(245,189),0.90,true)
+    body_display = BodyScript.new()
+    body_display.name = "HumanBodyInjuryAndSuitMonitor"
+    body_display.size = Vector2(236,159)
+    body_display.position = Vector2(5,4)
+    status_frame.add_child(body_display)
+    _button(ui,"SEAL SUIT  x2","patch",Vector2(15,387),Vector2(243,48),_seal_suit)
 
     var mission_w := minf(390,screen.x*0.34)
     var mission := _panel(ui,Vector2(screen.x*0.5-mission_w*0.5,14),Vector2(mission_w,92),0.84)
@@ -394,6 +445,7 @@ func _build_dive_hud() -> void:
     smallmap = MapScript.new()
     smallmap.name = "LocalCaveSurvey"
     smallmap.route = cave.route
+    smallmap.branches = cave.branches
     smallmap.checkpoints = cave.marker_positions
     smallmap.position = Vector2(5,5)
     smallmap.size = Vector2(map_w-10,171)
@@ -406,6 +458,8 @@ func _build_dive_hud() -> void:
     map_btn.name = "OpenMapButton"
 
     warning_label = _label(ui,"",Vector2(screen.x*0.31,112),Vector2(screen.x*0.42,39),17,Color(1.0,0.52,0.41))
+    instructor_label = _label(ui,"MAYA / Stay with my light and the yellow guideline.",Vector2(screen.x*0.31,screen.y-80),Vector2(screen.x*0.47,54),15,CYAN)
+    instructor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     event_label = _label(ui,"",Vector2(screen.x*0.27,150),Vector2(screen.x*0.48,40),21,CYAN)
     event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -437,6 +491,12 @@ func _build_dive_hud() -> void:
     down.button_up.connect(func(): descend_held = false)
     _label(ui,"SWIM",Vector2(78,screen.y-32),Vector2(90,20),13,MUTED)
     _label(ui,"LOOK / DRAG",Vector2(screen.x*0.52,screen.y-32),Vector2(160,20),13,MUTED)
+    impact_shade = ColorRect.new()
+    impact_shade.name = "HitFlashNonBlocking"
+    impact_shade.color = Color(0.88,0.13,0.10,0.0)
+    impact_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    ui.add_child(impact_shade)
+    impact_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
     map_overlay = Control.new()
     map_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -454,6 +514,7 @@ func _build_dive_hud() -> void:
     bigmap.name = "ExpeditionSurveyMap"
     bigmap.large = true
     bigmap.route = cave.route
+    bigmap.branches = cave.branches
     bigmap.checkpoints = cave.marker_positions
     bigmap.position = Vector2(16,18)
     bigmap.size = Vector2(full_width-32,full_height-100)
@@ -471,6 +532,15 @@ func _add_icon(parent: Node, kind: String, pos: Vector2, extent: Vector2) -> voi
 func _process(delta: float) -> void:
     if flow != Flow.DIVING:
         return
+    if tutorial_visible:
+        return
+    if instructor != null:
+        instructor.set_process(not map_open)
+    hit_cooldown = maxf(0.0,hit_cooldown-delta)
+    route_warning_clock = maxf(0.0,route_warning_clock-delta)
+    comm_clock = maxf(0.0,comm_clock-delta)
+    if comm_clock <= 0.0 and instructor_label != null:
+        instructor_label.text = "MAYA / Yellow line leads back to the entrance."
     if event_clock > 0.0:
         event_clock -= delta
         if event_clock <= 0.0:
@@ -494,37 +564,145 @@ func _simulate_dive(delta: float) -> void:
     max_distance_m = maxf(max_distance_m,diver.position.distance_to(cave.route[0]))
     # Deliberately gameplay-scaled gas economy; NOT decompression / gas planning software.
     var effort := 1.40 if diver.boosted else 1.0
-    gas_bar = maxf(0.0,gas_bar - (0.20 * (1.0+depth/12.0) * effort * delta))
+    var suit_leak := (100.0-suit_integrity)*0.0045
+    var torso_effort := 1.25 if float(body_health["TORSO"])<55.0 else 1.0
+    gas_bar = maxf(0.0,gas_bar - (0.20 * (1.0+depth/12.0) * effort * torso_effort + suit_leak) * delta)
+    diver.swim_speed = 3.4 if float(body_health["LEGS"])<45.0 else 5.2
+    if _total_hp() <= 20.0 or float(body_health["HEAD"]) <= 4.0:
+        _finish_dive(false,"INJURIES FORCE EMERGENCY EXTRACTION")
+        return
     if gas_bar <= 0.0:
         _finish_dive(false,"BREATHING GAS DEPLETED")
         return
+    if gas_bar < TURN_WARNING and not low_gas_notified:
+        low_gas_notified = true
+        _set_comm("MAYA / Gas reserve is low. We can return and keep a partial survey.")
     if objective_index < cave.marker_positions.size():
         var goal := cave.marker_positions[objective_index]
         if diver.position.distance_to(goal) < 4.8:
             objective_index += 1
             audio.survey_complete()
+            _set_comm("MAYA / Beacon logged. Stay on the main guideline to the next site.")
             _toast("SITE %02d REGISTERED" % objective_index if objective_index < 3 else "SURVEY COMPLETE / RETURN TO ENTRY")
     elif diver.position.distance_to(cave.route[0]) < 5.6:
         _finish_dive(true,"ALL SITES RECORDED")
         return
-    var nearest := cave.sample_path[0]
-    var nearest_d := INF
-    var nearest_index := 0
-    for idx in range(cave.sample_path.size()):
-        var path_point := cave.sample_path[idx]
-        var d := path_point.distance_squared_to(diver.position)
-        if d < nearest_d:
-            nearest = path_point
-            nearest_index = idx
-            nearest_d = d
-    var fraction := float(nearest_index) / float(maxi(1,cave.sample_path.size()-1))
-    restriction_near = ((fraction > 0.38 and fraction < 0.45) or (fraction > 0.82 and fraction < 0.88)) if site_index == 0 else ((fraction > 0.17 and fraction < 0.23) or (fraction > 0.44 and fraction < 0.53) or (fraction > 0.77 and fraction < 0.84))
+    if dive_seconds > 28.0 and objective_index > 0 and diver.position.distance_to(cave.route[0]) < 5.6:
+        _finish_dive(true,"SAFE EXTRACTION / PARTIAL SURVEY")
+        return
+    var nearest_index := cave.nearest_main_index(diver.position)
+    var nearest := cave.sample_path[nearest_index]
+    var fraction := float(nearest_index)/float(maxi(1,cave.sample_path.size()-1))
+    restriction_near = ((fraction > 0.30 and fraction < 0.35) or (fraction > 0.58 and fraction < 0.64) or (fraction > 0.89 and fraction < 0.94)) if site_index == 0 else ((fraction > 0.17 and fraction < 0.23) or (fraction > 0.44 and fraction < 0.53) or (fraction > 0.77 and fraction < 0.84))
+    if site_index == 0:
+        for j in cave.branches.size():
+            var branch := cave.branches[j]
+            if not found_branches[j] and (diver.position.distance_to(branch[0])<11.0 or diver.position.distance_to(branch[branch.size()-1])<9.0):
+                found_branches[j] = true
+                _set_comm("MAYA / Junction ahead. The side tunnels have no safety guideline.")
+        if cave.nearest_main_distance(diver.position)>11.5 and route_warning_clock <= 0.0:
+            var side_id := cave.nearest_branch_index(diver.position)
+            var name: String = Sites.branch_names(site_index)[side_id] if side_id>=0 else "UNKNOWN GALLERY"
+            _set_comm("MAYA / Unmarked gallery: %s. Find the yellow line to return." % name)
+            route_warning_clock = 21.0
     if diver.position.y < nearest.y-1.25 and diver.velocity.length() > 3.7:
         silt_clock = 2.8
     else:
         silt_clock = maxf(0.0,silt_clock-delta)
     var base := 0.023 if site_index==0 else 0.034
+    if float(body_health["HEAD"]) < 50.0:
+        base *= 1.35
+    diver.lamp.light_energy = 2.15 if float(body_health["ARMS"])<45.0 else 3.5
     water_environment.environment.fog_density = lerpf(water_environment.environment.fog_density,base*2.4 if silt_clock>0 else base,delta*1.5)
+
+func _total_hp() -> float:
+    return float(body_health["HEAD"])*0.28 + float(body_health["TORSO"])*0.32 + float(body_health["ARMS"])*0.18 + float(body_health["LEGS"])*0.22
+
+func _on_sharp_rock_contact(part: String, damage: float) -> void:
+    if flow != Flow.DIVING or tutorial_visible or hit_cooldown > 0.0:
+        return
+    hit_cooldown = 2.4
+    rock_hits += 1
+    body_health[part] = maxf(0.0,float(body_health[part])-damage)
+    if audio != null:
+        audio.rock_contact()
+    suit_integrity = maxf(15.0,suit_integrity-17.0)
+    _toast("ROCK CONTACT / %s -%d HP" % [part,int(damage)])
+    _set_comm("MAYA / Slow down! Sharp limestone can injure you and tear the suit.")
+    if impact_shade != null:
+        var tint := impact_shade.color
+        tint.a = 0.22
+        impact_shade.color = tint
+        create_tween().tween_property(impact_shade,"color:a",0.0,0.72)
+
+func _seal_suit() -> void:
+    if flow != Flow.DIVING or tutorial_visible:
+        return
+    if patch_count <= 0:
+        _set_comm("MAYA / No seal patches remain. Turn back carefully.")
+        return
+    if suit_integrity > 94.0:
+        _toast("NO LEAK DETECTED / SAVE YOUR PATCH")
+        return
+    patch_count -= 1
+    suit_integrity = minf(100.0,suit_integrity + 45.0)
+    _toast("SUIT SEALED / BODY INJURIES REMAIN")
+    _set_comm("MAYA / Good. The leak is reduced, but injured limbs do not auto-heal.")
+
+func _set_comm(message: String) -> void:
+    if instructor_label != null:
+        instructor_label.text = message
+        comm_clock = 9.0
+        if audio != null:
+            audio.radio_message()
+
+func _show_training(step: int) -> void:
+    tutorial_step = step
+    tutorial_visible = true
+    diver.can_move = false
+    if instructor != null:
+        instructor.set_process(false)
+    if training_overlay != null:
+        training_overlay.queue_free()
+    training_overlay = Control.new()
+    training_overlay.name = "InstructorMayaDiveTutorial"
+    training_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    ui.add_child(training_overlay)
+    training_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    var shade := ColorRect.new()
+    shade.color = Color(0,0.018,0.027,0.72)
+    training_overlay.add_child(shade)
+    shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    var width := minf(650.0,screen.x-45.0)
+    var height := 325.0
+    var panel := _panel(training_overlay,Vector2((screen.x-width)*0.5,(screen.y-height)*0.5),Vector2(width,height),0.98,true)
+    _label(panel,"INSTRUCTOR MAYA  /  TRAINING %d OF 4" % (step+1),Vector2(25,19),Vector2(width-50,30),18,CYAN)
+    var lines := [
+        "Welcome to the expedition. I will swim along the yellow guideline. Follow my torch; the line connects back to our entrance.",
+        "At intersections you may explore side galleries, vertical chimneys and dead ends. Unmarked routes can cost valuable gas.",
+        "Left stick swims; drag to look; UP/DOWN controls depth. Avoid sharp rock spikes. The body monitor tracks head, torso, arms and legs.",
+        "Rock contact reduces body HP and damages your suit. A torn suit leaks breathing gas. You have only two SEAL SUIT patches. Return before running out."
+    ]
+    _label(panel,lines[step],Vector2(25,83),Vector2(width-50,126),22,WHITE)
+    _button(panel,"SKIP","back",Vector2(24,248),Vector2(178,54),_end_training)
+    var advance_tutorial := func():
+        if tutorial_step >= 3:
+            _end_training()
+        else:
+            _show_training(tutorial_step + 1)
+    _button(panel,"DIVE NOW" if step>=3 else "NEXT","play",Vector2(width-245,248),Vector2(221,54),advance_tutorial,true)
+
+func _end_training() -> void:
+    tutorial_visible = false
+    if training_overlay != null:
+        training_overlay.queue_free()
+        training_overlay = null
+    diver.can_move = true
+    if instructor != null:
+        instructor.set_process(true)
+    if not mobile:
+        Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+    _set_comm("MAYA / I am leading on the yellow line. Check your depth and gas.")
 
 func _target() -> Vector3:
     return cave.marker_positions[objective_index] if objective_index < cave.marker_positions.size() else cave.route[0]
@@ -544,17 +722,27 @@ func _update_hud() -> void:
         warning_label.text = "CRITICAL GAS  /  RETURN NOW"
     elif gas_bar<TURN_WARNING and objective_index<3:
         warning_label.text = "LOW GAS  /  CONSIDER RETURN"
+    elif suit_integrity < 78.0:
+        warning_label.text = "SUIT DAMAGE  /  GAS LEAK: USE SEAL SUIT"
+    elif _total_hp() < 75.0:
+        warning_label.text = "INJURY  /  BODY MONITOR WARNING"
     elif silt_clock > 0:
         warning_label.text = "SILT DISTURBED  /  LOW VISIBILITY"
     elif restriction_near:
         warning_label.text = "TIGHT PASSAGE  /  SLOW DOWN"
     else:
         warning_label.text = ""
+    if body_display != null:
+        body_display.parts = body_health
+        body_display.suit_integrity = suit_integrity
+        body_display.patch_count = patch_count
+        body_display.queue_redraw()
     for map_node in [smallmap,bigmap]:
         map_node.diver_position = diver.position
         map_node.diver_yaw = diver.rotation.y
         map_node.target_position = _target()
         map_node.recorded_sites = objective_index
+        map_node.discovered_branches = found_branches
         if map_node == smallmap or map_open:
             map_node.queue_redraw()
 
@@ -577,7 +765,7 @@ func _toggle_map() -> void:
     map_overlay.visible = map_open
     ascend_held = false
     descend_held = false
-    diver.can_move = not map_open
+    diver.can_move = not map_open and not tutorial_visible
     if lookpad != null:
         lookpad.pending_delta = Vector2.ZERO
         lookpad.touch_id = -1
@@ -589,6 +777,7 @@ func _toggle_pause() -> void:
         flow = Flow.PAUSED
         diver.can_move = false
         audio.set_paused(true)
+        if instructor != null: instructor.set_process(false)
         ascend_held = false
         descend_held = false
         if lookpad != null:
@@ -613,7 +802,7 @@ func _show_pause() -> void:
     _label(p,"EXPEDITION ON HOLD",Vector2(23,24),Vector2(340,36),28,WHITE,true)
     _button(p,"","volume",Vector2(376,22),Vector2(52,45),_toggle_dive_audio)
     _label(p,"Use the guideline to find your way back.",Vector2(24,76),Vector2(400,30),16,MUTED)
-    _label(p,"SWIM  /  LEFT STICK     LOOK  /  DRAG\nASCEND + DESCEND  /  RIGHT ARROWS",Vector2(24,118),Vector2(408,64),15,CYAN)
+    _label(p,"LEFT STICK / SWIM     DRAG / LOOK\nARROWS / ASCEND-DESCEND     PATCH / SEAL LEAK",Vector2(24,118),Vector2(408,64),15,CYAN)
     _button(p,"RESUME","play",Vector2(24,207),Vector2(401,52),_resume,true)
     _button(p,"RETURN TO BOAT","back",Vector2(24,272),Vector2(401,48),_return_to_boat)
 
@@ -622,8 +811,9 @@ func _resume() -> void:
         pause_overlay.queue_free()
         pause_overlay = null
     flow = Flow.DIVING
-    diver.can_move = not map_open
+    diver.can_move = not map_open and not tutorial_visible
     audio.set_paused(false)
+    if instructor != null: instructor.set_process(true)
     if lookpad != null:
         lookpad.pending_delta = Vector2.ZERO
         lookpad.touch_id = -1
@@ -634,6 +824,7 @@ func _finish_dive(success: bool, message: String) -> void:
     flow = Flow.SUCCESS if success else Flow.FAILED
     diver.can_move = false
     audio.finish()
+    if instructor != null: instructor.set_process(false)
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
     _clear_ui()
     _screen_veil(0.80)
@@ -645,7 +836,11 @@ func _finish_dive(success: bool, message: String) -> void:
     _label(p,"DIVE TIME       %02d:%02d" % [int(dive_seconds)/60,int(dive_seconds)%60],Vector2(25,190),Vector2(500,30),20,WHITE)
     _label(p,"MAX DEPTH       %.1f m" % max_depth_m,Vector2(25,225),Vector2(500,30),20,WHITE)
     _label(p,"MAX RANGE       %.0f m" % max_distance_m,Vector2(25,260),Vector2(500,30),20,WHITE)
-    _label(p,"REMAINING GAS   %d bar  /  SITES %d/3" % [int(gas_bar),objective_index],Vector2(25,295),Vector2(510,30),19,GOLD)
+    _label(p,"GAS %d bar  /  HP %d%%  /  SUIT %d%%  /  SITES %d/3" % [int(gas_bar),int(_total_hp()),int(suit_integrity),objective_index],Vector2(25,295),Vector2(510,32),17,GOLD)
+    var discovered := 0
+    for known in found_branches:
+        if known: discovered += 1
+    _label(p,"ROCK HITS %d     GALLERIES FOUND %d/%d" % [rock_hits,discovered,found_branches.size()],Vector2(25,326),Vector2(510,25),14,MUTED)
     _button(p,"DIVE AGAIN","play",Vector2(25,375),Vector2(245,57),_begin_dive,true)
     _button(p,"BACK TO BOAT","back",Vector2(289,375),Vector2(245,57),_return_to_boat)
 
