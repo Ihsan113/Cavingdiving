@@ -22,9 +22,17 @@ func _ready() -> void:
     branches = Sites.branches_for(site_index)
     for branch in branches:
         branch_samples.append(_bake(branch))
-    junction_indices = Sites.junction_indices(site_index)
-    for index in junction_indices:
-        junction_positions.append(route[index])
+    # Godot's typed Array[int] cannot receive an untyped Array directly.
+    # Append validated elements individually instead of assigning the source array.
+    junction_indices.clear()
+    junction_positions.clear()
+    for raw_index in Sites.junction_indices(site_index):
+        var index: int = int(raw_index)
+        if index >= 0 and index < route.size():
+            junction_indices.append(index)
+            junction_positions.append(route[index])
+        else:
+            push_warning("Skipping invalid cave junction %d" % index)
     cave_material = StandardMaterial3D.new()
     cave_material.albedo_color = Color(0.73,0.80,0.78)
     cave_material.roughness = 0.98
