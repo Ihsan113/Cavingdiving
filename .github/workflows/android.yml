@@ -31,7 +31,9 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Godot Android SDK packages
         shell: bash
@@ -45,6 +47,20 @@ jobs:
             'cmake;3.10.2.4988404' \
             'ndk;28.1.13356709'
           test -x "${ANDROID_SDK_ROOT}/platform-tools/adb"
+
+      - name: Verify expedition worlds and original audio assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/verify_project.py
+          for file in \
+              scripts/boat_lobby.gd scripts/dive_sites.gd scripts/hud_glyph.gd \
+              assets/rock_limestone.png assets/rock_normal.png \
+              assets/audio/boat_ocean.ogg assets/audio/underwater_ambience.ogg \
+              assets/audio/regulator_breath.ogg assets/audio/bubbles_release.ogg \
+              assets/audio/fin_swoosh.ogg assets/audio/survey_ping.ogg; do
+            test -s "$file" || { echo "Missing: $file"; exit 1; }
+          done
 
       - name: Install Godot 4.7.2 and export templates
         uses: chickensoft-games/setup-godot@v2
@@ -61,6 +77,16 @@ jobs:
           godot --headless --editor --path . --quit 2>&1 | tee /tmp/godot-import.log
           if grep -Ei 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/godot-import.log; then
             echo 'GDScript parse/import error detected.'
+            exit 1
+          fi
+
+      - name: Smoke test title scene with Godot headless
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot --headless --path . --quit-after 30 2>&1 | tee /tmp/cavedive-smoke.log
+          if grep -Ei 'SCRIPT ERROR|Parse Error|Invalid call|Invalid access' /tmp/cavedive-smoke.log; then
+            echo 'Runtime script error during title scene initialization.'
             exit 1
           fi
 

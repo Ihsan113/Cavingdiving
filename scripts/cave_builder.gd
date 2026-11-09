@@ -1,6 +1,8 @@
 extends Node3D
 class_name ProceduralCave
 
+const Sites = preload("res://scripts/dive_sites.gd")
+var site_index: int = 0
 var route: PackedVector3Array = PackedVector3Array()
 var sample_path: PackedVector3Array = PackedVector3Array()
 var marker_positions: Array[Vector3] = []
@@ -10,55 +12,63 @@ var cave_material: StandardMaterial3D
 var guide_material: StandardMaterial3D
 
 func _ready() -> void:
+    # Each location has its own persistent, hand-authored fictional 3D survey path.
+    route = Sites.route_for(site_index)
     var curve := Curve3D.new()
-    for p in [
-        Vector3(0, -5, 5),
-        Vector3(0, -7, -14),
-        Vector3(6, -11, -30),
-        Vector3(2, -14, -48),
-        Vector3(-7, -17, -65),
-        Vector3(-8, -20, -85),
-        Vector3(4, -24, -108),
-        Vector3(1, -27, -132),
-    ]:
-        route.append(p)
+    for p in route:
         curve.add_point(p)
-    curve.bake_interval = 1.5
+    curve.bake_interval = 2.3
     sample_path = curve.get_baked_points()
 
     cave_material = StandardMaterial3D.new()
-    cave_material.albedo_color = Color(0.37, 0.47, 0.50)
-    cave_material.metallic = 0.04
-    cave_material.roughness = 1.0
+    cave_material.albedo_color = Color(0.73, 0.80, 0.78)
+    cave_material.roughness = 0.98
+    cave_material.metallic = 0.0
     cave_material.cull_mode = BaseMaterial3D.CULL_DISABLED
     cave_material.vertex_color_use_as_albedo = true
+    cave_material.albedo_texture = load("res://assets/rock_limestone.png")
+    cave_material.normal_enabled = true
+    cave_material.normal_texture = load("res://assets/rock_normal.png")
+    cave_material.normal_scale = 0.52
 
     guide_material = StandardMaterial3D.new()
-    guide_material.albedo_color = Color(0.96, 0.72, 0.23)
+    guide_material.albedo_color = Color(0.92, 0.65, 0.19)
+    guide_material.roughness = 0.85
     guide_material.emission_enabled = true
-    guide_material.emission = Color(0.80, 0.48, 0.10)
-    guide_material.emission_energy_multiplier = 0.42
+    guide_material.emission = Color(0.54, 0.32, 0.05)
+    guide_material.emission_energy_multiplier = 0.35
 
     _make_cave_mesh()
     _make_guideline()
     _make_formations()
-    marker_positions = [sample_path[int(sample_path.size() * 0.32)], sample_path[int(sample_path.size() * 0.66)], sample_path[sample_path.size() - 9]]
+    _make_mineral_debris()
+    marker_positions = [sample_path[int(sample_path.size() * 0.28)], sample_path[int(sample_path.size() * 0.62)], sample_path[sample_path.size() - 7]]
     for i in marker_positions.size():
         marker_nodes.append(_make_beacon(marker_positions[i], i))
     _make_entry_beacon()
 
 func _cave_radius(i: int, angle: float) -> float:
     var t := float(i) / maxf(1.0, float(sample_path.size() - 1))
-    var chamber := 0.9 if (t > 0.55 and t < 0.7) or t > 0.93 else 0.0
-    var noise := 0.28 * sin(float(i) * 1.67 + angle * 4.1) + 0.2 * sin(float(i) * 0.43 + angle * 7.0)
-    return 3.45 + chamber + noise
+    var chamber := 1.42 if (t > 0.24 and t < 0.30) or (t > 0.69 and t < 0.75) else 0.0
+    var squeeze := 0.0
+    if site_index == 0:
+        if (t > 0.38 and t < 0.45) or (t > 0.82 and t < 0.88):
+            squeeze = -1.42
+    else:
+        if (t > 0.17 and t < 0.23) or (t > 0.44 and t < 0.53) or (t > 0.77 and t < 0.84):
+            squeeze = -1.52
+    # Continuous rock strata, not random spikes, keep restrictions navigable.
+    var shape := 0.25 * sin(float(i) * 0.27 + angle * 2.1)
+    shape += 0.14 * sin(float(i) * 0.79 + angle * 5.3)
+    shape += 0.07 * sin(float(i) * 1.93 + angle * 10.7)
+    var base := 3.25 if site_index == 0 else 2.85
+    return maxf(1.12, base + chamber + squeeze + shape)
 
 func _make_cave_mesh() -> void:
     var st := SurfaceTool.new()
     st.begin(Mesh.PRIMITIVE_TRIANGLES)
     var sectors := 18
-    var rings := sample_path.size()
-    for i in (rings - 1):
+    for i in range(sample_path.size() - 1):
         for j in sectors:
             var a0 := TAU * float(j) / float(sectors)
             var a1 := TAU * float(j + 1) / float(sectors)
@@ -66,16 +76,28 @@ func _make_cave_mesh() -> void:
             var p01 := _ring_vertex(i, a1)
             var p10 := _ring_vertex(i + 1, a0)
             var p11 := _ring_vertex(i + 1, a1)
-            var shade := 0.71 + 0.17 * sin(float(i) * 0.93 + float(j) * 1.8)
-            var rock_color := Color(shade * 0.65, shade * 0.81, shade * 0.82)
-            # Two triangles per segment; double-sided rock material.
-            for v in [p00, p10, p01, p10, p11, p01]:
-                st.set_color(rock_color)
-                st.add_vertex(v)
+            var rock_stripe := sin(float(i) * 0.19 + sin(a0) * 5.1)
+            var shade := clampf(0.77 + rock_stripe * 0.10 + sin(float(i) * 1.8 + float(j) * 1.6) * 0.045, 0.52, 0.98)
+            var limestone := Color(shade * 0.74, shade * 0.82, shade * 0.80)
+            if sin(float(i) * 0.26 + a0 * 2.0) > 0.48:
+                limestone = limestone.lerp(Color(0.41, 0.49, 0.45), 0.26)
+            var u0 := float(i) * 0.24
+            var u1 := float(i + 1) * 0.24
+            var v0 := float(j) / float(sectors) * 3.0
+            var v1 := float(j + 1) / float(sectors) * 3.0
+            for vtx in [
+                [p00, Vector2(u0, v0)], [p10, Vector2(u1, v0)], [p01, Vector2(u0, v1)],
+                [p10, Vector2(u1, v0)], [p11, Vector2(u1, v1)], [p01, Vector2(u0, v1)]
+            ]:
+                st.set_color(limestone)
+                st.set_uv(vtx[1])
+                st.add_vertex(vtx[0])
     st.generate_normals()
+    st.generate_tangents()
+    st.index()
     var mesh := st.commit()
     var rock := MeshInstance3D.new()
-    rock.name = "ExplorableLimestoneCave"
+    rock.name = "WeatheredLimestoneWalls"
     rock.mesh = mesh
     rock.material_override = cave_material
     add_child(rock)
@@ -97,54 +119,108 @@ func _ring_vertex(i: int, a: float) -> Vector3:
     var tangent := (after - before).normalized()
     var right := Vector3.UP.cross(tangent).normalized()
     var up := tangent.cross(right).normalized()
-    return current + (right * cos(a) + up * sin(a)) * _cave_radius(i, a)
+    var width := 1.05 + 0.10 * sin(float(i) * 0.11)
+    var height := 0.91 + 0.13 * sin(float(i) * 0.15 + 2.0)
+    var r := _cave_radius(i, a)
+    return current + right * cos(a) * r * width + up * sin(a) * r * height
 
 func _make_guideline() -> void:
-    var rope := Node3D.new()
-    rope.name = "FixedNavigationGuideLine"
-    add_child(rope)
-    var last := Vector3.ZERO
-    for i in sample_path.size():
-        var p := sample_path[i] + Vector3(0, -1.85, 0)
-        if i > 0:
-            _cylinder_between(rope, last, p, 0.035, guide_material)
-        last = p
+    var rope_mesh := CylinderMesh.new()
+    rope_mesh.top_radius = 0.029
+    rope_mesh.bottom_radius = 0.029
+    rope_mesh.height = 1.0
+    rope_mesh.radial_segments = 5
+    var multi := MultiMesh.new()
+    multi.transform_format = MultiMesh.TRANSFORM_3D
+    multi.mesh = rope_mesh
+    multi.instance_count = sample_path.size() - 1
+    for i in range(sample_path.size() - 1):
+        var a := sample_path[i] + Vector3(0, -0.95, 0)
+        var b := sample_path[i + 1] + Vector3(0, -0.95, 0)
+        var d := b - a
+        var basis := Basis(Quaternion(Vector3.UP, d.normalized())).scaled(Vector3(1, d.length(), 1))
+        multi.set_instance_transform(i, Transform3D(basis, (a + b) * 0.5))
+    var guide := MultiMeshInstance3D.new()
+    guide.name = "FixedExpeditionGuideline"
+    guide.multimesh = multi
+    guide.material_override = guide_material
+    add_child(guide)
 
-func _cylinder_between(parent: Node3D, a: Vector3, b: Vector3, radius: float, mat: Material) -> void:
-    var d := b - a
-    if d.length() < 0.001:
-        return
-    var cylinder := CylinderMesh.new()
-    cylinder.top_radius = radius
-    cylinder.bottom_radius = radius
-    cylinder.height = d.length()
-    cylinder.radial_segments = 5
-    var mesh := MeshInstance3D.new()
-    mesh.mesh = cylinder
-    mesh.material_override = mat
-    mesh.position = (a + b) * 0.5
-    mesh.quaternion = Quaternion(Vector3.UP, d.normalized())
-    parent.add_child(mesh)
+func _stone_material(color: Color) -> StandardMaterial3D:
+    var mat := StandardMaterial3D.new()
+    mat.albedo_color = color
+    mat.roughness = 1.0
+    mat.vertex_color_use_as_albedo = true
+    return mat
+
+func _new_formation_multimesh(name: String, shape: Mesh, mat: Material, transforms: Array[Transform3D], palette: Array[Color]) -> void:
+    var instance_mesh := MultiMesh.new()
+    instance_mesh.transform_format = MultiMesh.TRANSFORM_3D
+    instance_mesh.use_colors = true
+    instance_mesh.mesh = shape
+    instance_mesh.instance_count = transforms.size()
+    for idx in transforms.size():
+        instance_mesh.set_instance_transform(idx, transforms[idx])
+        instance_mesh.set_instance_color(idx, palette[idx])
+    var node := MultiMeshInstance3D.new()
+    node.name = name
+    node.multimesh = instance_mesh
+    node.material_override = mat
+    add_child(node)
 
 func _make_formations() -> void:
     var rng := RandomNumberGenerator.new()
     rng.seed = 11752
-    var stone := StandardMaterial3D.new()
-    stone.albedo_color = Color(0.24, 0.35, 0.37)
-    stone.roughness = 1.0
-    for i in range(8, sample_path.size() - 8, 7):
-        var p := sample_path[i]
-        var h := rng.randf_range(0.8, 2.1)
-        var cone := CylinderMesh.new()
-        cone.top_radius = rng.randf_range(0.32, 0.64)
-        cone.bottom_radius = 0.03
-        cone.height = h
-        cone.radial_segments = 6
-        var stalactite := MeshInstance3D.new()
-        stalactite.mesh = cone
-        stalactite.material_override = stone
-        stalactite.position = p + Vector3(rng.randf_range(-1.2, 1.2), 3.0 - h * 0.5, 0.0)
-        add_child(stalactite)
+    var roof_mesh := CylinderMesh.new()
+    roof_mesh.top_radius = 0.40
+    roof_mesh.bottom_radius = 0.012
+    roof_mesh.height = 1.0
+    roof_mesh.radial_segments = 7
+    var floor_mesh := CylinderMesh.new()
+    floor_mesh.top_radius = 0.014
+    floor_mesh.bottom_radius = 0.35
+    floor_mesh.height = 1.0
+    floor_mesh.radial_segments = 7
+    var roof_t: Array[Transform3D] = []
+    var roof_c: Array[Color] = []
+    var floor_t: Array[Transform3D] = []
+    var floor_c: Array[Color] = []
+    for i in range(7, sample_path.size() - 7, 3):
+        var angle := PI * 0.5 + rng.randf_range(-0.40, 0.40)
+        var roof := _ring_vertex(i, angle)
+        var h := rng.randf_range(0.65, 2.05)
+        var r := rng.randf_range(0.45, 1.2)
+        roof_t.append(Transform3D(Basis().scaled(Vector3(r, h, r)), roof - Vector3(0, h * 0.50, 0)))
+        roof_c.append(Color(rng.randf_range(0.70, 0.87), rng.randf_range(0.78, 0.93), rng.randf_range(0.74, 0.87)))
+        if i % 2 == 1:
+            var floor := _ring_vertex(i, PI * 1.5 + rng.randf_range(-0.55, 0.55))
+            var floor_h := rng.randf_range(0.40, 1.25)
+            var floor_r := rng.randf_range(0.55, 1.25)
+            floor_t.append(Transform3D(Basis().scaled(Vector3(floor_r, floor_h, floor_r)), floor + Vector3(0, floor_h * 0.50, 0)))
+            floor_c.append(Color(rng.randf_range(0.65, 0.80), rng.randf_range(0.74, 0.86), rng.randf_range(0.73, 0.84)))
+    _new_formation_multimesh("CalciteStalactites", roof_mesh, _stone_material(Color(0.44, 0.52, 0.50)), roof_t, roof_c)
+    _new_formation_multimesh("MineralStalagmites", floor_mesh, _stone_material(Color(0.39, 0.45, 0.42)), floor_t, floor_c)
+
+func _make_mineral_debris() -> void:
+    var rng := RandomNumberGenerator.new()
+    rng.seed = 90281
+    var pebble := SphereMesh.new()
+    pebble.radius = 0.5
+    pebble.height = 1.0
+    pebble.radial_segments = 7
+    pebble.rings = 4
+    var transforms: Array[Transform3D] = []
+    var colors: Array[Color] = []
+    for i in range(4, sample_path.size() - 4, 2):
+        for _j in 2:
+            var bottom := _ring_vertex(i, PI * 1.5 + rng.randf_range(-0.72, 0.72))
+            var sx := rng.randf_range(0.28, 1.10)
+            var sy := rng.randf_range(0.18, 0.45)
+            var sz := rng.randf_range(0.28, 0.95)
+            transforms.append(Transform3D(Basis().scaled(Vector3(sx, sy, sz)), bottom + Vector3(0, sy * 0.20, 0)))
+            var tint := rng.randf_range(0.65, 0.95)
+            colors.append(Color(tint, tint * 0.98, tint * 0.91))
+    _new_formation_multimesh("ScatteredFloorDebris", pebble, _stone_material(Color(0.36, 0.44, 0.42)), transforms, colors)
 
 func _make_beacon(p: Vector3, index: int) -> MeshInstance3D:
     var holder := Node3D.new()
